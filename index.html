@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Shiny Sprite Generator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { text-align: center; color: #4ade80; }
+        .section {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        input[type="file"] { display: none; }
+        .custom-file-upload {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3b82f6;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .custom-file-upload:hover { background-color: #2563eb; }
+        .preview-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        .preview-box { text-align: center; }
+        canvas, img {
+            max-width: 200px;
+            image-rendering: pixelated; /* Keeps pixel art sharp */
+            border: 2px dashed #444;
+            background-color: #333;
+            padding: 5px;
+            display: block;
+            margin: 10px auto;
+        }
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .color-row {
+            display: flex;
+            align-items: center;
+            background: #333;
+            padding: 8px;
+            border-radius: 5px;
+            gap: 10px;
+        }
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .color-inputs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+        input[type="color"] { border: none; width: 40px; height: 25px; cursor: pointer; background: transparent;}
+        .download-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #10b981;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .download-btn:hover { background-color: #059669; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>✨ Shiny Sprite Generator ✨</h1>
+
+    <div class="section">
+        <h2>1. Upload Original Sprite</h2>
+        <label class="custom-file-upload">
+            <input type="file" id="imageInput" accept="image/png">
+            📁 Select Sprite (PNG)
+        </label>
+        <span id="fileName" style="margin-left: 10px; color: #aaa;">No file chosen</span>
+    </div>
+
+    <div id="workspace" class="hidden">
+        <div class="section">
+            <h2>2. Previews</h2>
+            <div class="preview-container">
+                <div class="preview-box">
+                    <h3>Original</h3>
+                    <img id="originalImg" src="" alt="Original Preview">
+                </div>
+                <div class="preview-box">
+                    <h3>Your Custom Shiny</h3>
+                    <canvas id="outputCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>3. Replace Palette Colors</h2>
+            <p style="font-size: 14px; color: #aaa;">Click the picker color wheel to change a shade, or leave it alone to keep the original color.</p>
+            <div id="paletteContainer" class="palette-grid"></div>
+        </div>
+
+        <div class="section">
+            <h2>4. Export</h2>
+            <label for="outName" style="display:block; margin-bottom:5px;">File Name:</label>
+            <input type="text" id="outName" value="shiny_sprite.png" style="padding: 8px; width: 95%; background:#333; color:white; border:1px solid #555; border-radius:4px; margin-bottom:15px;">
+            <button id="downloadBtn" class="download-btn">🚀 Download Shiny Sprite</button>
+        </div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const fileName = document.getElementById('fileName');
+        const workspace = document.getElementById('workspace');
+        const originalImg = document.getElementById('originalImg');
+        const outputCanvas = document.getElementById('outputCanvas');
+        const paletteContainer = document.getElementById('paletteContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const outNameInput = document.getElementById('outName');
+
+        let ctx = outputCanvas.getContext('2d');
+        let originalImageData = null;
+        let uniqueColors = []; // Array of RGB strings "r,g,b"
+        let colorMap = {}; // Maps "r,g,b" string to [r, g, b] array
+
+        // Helper: Convert RGB components to Hex string
+        function rgbToHex(r, g, b) {
+            return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
+
+        // Helper: Convert Hex string to RGB array
+        function hexToRgb(hex) {
+            let bigint = parseInt(hex.slice(1), 16);
+            return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+        }
+
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            fileName.textContent = file.name;
+            outNameInput.value = "shiny_" + file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                originalImg.src = event.target.result;
+                
+                originalImg.onload = function() {
+                    // Set canvas boundaries matching image size
+                    outputCanvas.width = originalImg.naturalWidth;
+                    outputCanvas.height = originalImg.naturalHeight;
+                    
+                    // Draw to canvas to extract pixel arrays
+                    ctx.drawImage(originalImg, 0, 0);
+                    originalImageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+                    
+                    extractPalette(originalImageData.data);
+                    workspace.classList.remove('hidden');
+                };
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function extractPalette(pixels) {
+            let colorSet = new Set();
+            for (let i = 0; i < pixels.length; i += 4) {
+                let r = pixels[i];
+                let g = pixels[i+1];
+                let b = pixels[i+2];
+                let a = pixels[i+3];
+                
+                if (a > 0) { // Ignore fully transparent pixels
+                    colorSet.add(`${r},${g},${b}`);
+                }
+            }
+            
+            // Sort colors to keep order consistent
+            uniqueColors = Array.from(colorSet).sort();
+            
+            // Build the UI for mapping colors
+            paletteContainer.innerHTML = '';
+            colorMap = {};
+            
+            uniqueColors.forEach((rgbStr) => {
+                let [r, g, b] = rgbStr.split(',').map(Number);
+                let hex = rgbToHex(r, g, b);
+                
+                // Default maps to itself
+                colorMap[rgbStr] = [r, g, b];
+                
+                // Create HTML Elements
+                let row = document.createElement('div');
+                row.className = 'color-row';
+                
+                let preview = document.createElement('div');
+                preview.className = 'color-preview';
+                preview.style.backgroundColor = hex;
+                
+                let info = document.createElement('div');
+                info.className = 'color-inputs';
+                info.innerHTML = `<strong>Orig:</strong> ${hex}<br><strong>New:</strong>`;
+                
+                let picker = document.createElement('input');
+                picker.type = 'color';
+                picker.value = hex;
+                
+                picker.addEventListener('input', function() {
+                    let newHex = picker.value;
+                    colorMap[rgbStr] = hexToRgb(newHex);
+                    applyPaletteSwap();
+                });
+                
+                row.appendChild(preview);
+                row.appendChild(info);
+                row.appendChild(picker);
+                paletteContainer.appendChild(row);
+            });
+            
+            applyPaletteSwap();
+        }
+
+        function applyPaletteSwap() {
+            if (!originalImageData) return;
+            
+            // Clone the original data
+            let newImgData = ctx.createImageData(outputCanvas.width, outputCanvas.height);
+            let origPixels = originalImageData.data;
+            let newPixels = newImgData.data;
+            
+            for (let i = 0; i < origPixels.length; i += 4) {
+                let r = origPixels[i];
+                let g = origPixels[i+1];
+                let b = origPixels[i+2];
+                let a = origPixels[i+3];
+                
+                if (a === 0) {
+                    newPixels[i+3] = 0; // Maintain transparency
+                    continue;
+                }
+                
+                let key = `${r},${g},${b}`;
+                if (colorMap[key]) {
+                    newPixels[i] = colorMap[key][0];
+                    newPixels[i+1] = colorMap[key][1];
+                    newPixels[i+2] = colorMap[key][2];
+                    newPixels[i+3] = a;
+                } else {
+                    newPixels[i] = r;
+                    newPixels[i+1] = g;
+                    newPixels[i+2] = b;
+                    newPixels[i+3] = a;
+                }
+            }
+            
+            ctx.putImageData(newImgData, 0, 0);
+        }
+
+        downloadBtn.addEventListener('click', function() {
+            let link = document.createElement('a');
+            link.download = outNameInput.value || 'shiny_sprite.png';
+            link.href = outputCanvas.toDataURL('image/png');
+            link.click();
+        });
+    </script>
+</body>
+</html>

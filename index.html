@@ -71,6 +71,17 @@
         }
         .color-inputs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
         input[type="color"] { border: none; width: 40px; height: 25px; cursor: pointer; background: transparent;}
+        .utility-btn {
+            padding: 8px 15px;
+            background-color: #4b5563;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .utility-btn:hover { background-color: #374151; }
         .download-btn {
             display: block;
             width: 100%;
@@ -86,6 +97,15 @@
         }
         .download-btn:hover { background-color: #059669; }
         .hidden { display: none; }
+        .hex-display {
+            background-color: #111;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            word-break: break-all;
+            margin-top: 8px;
+            border: 1px solid #444;
+        }
     </style>
 </head>
 <body>
@@ -117,13 +137,20 @@
         </div>
 
         <div class="section">
-            <h2>3. Replace Palette Colors</h2>
+            <h2>3. Original Palette Hex Codes</h2>
+            <p style="font-size: 14px; color: #aaa;">Here are all the original unique colors detected in this sprite:</p>
+            <div id="hexStringDisplay" class="hex-display"></div>
+            <button id="copyPaletteBtn" class="utility-btn">📋 Copy Palette to Clipboard</button>
+        </div>
+
+        <div class="section">
+            <h2>4. Replace Palette Colors</h2>
             <p style="font-size: 14px; color: #aaa;">Click the picker color wheel to change a shade, or leave it alone to keep the original color.</p>
             <div id="paletteContainer" class="palette-grid"></div>
         </div>
 
         <div class="section">
-            <h2>4. Export</h2>
+            <h2>5. Export</h2>
             <label for="outName" style="display:block; margin-bottom:5px;">File Name:</label>
             <input type="text" id="outName" value="shiny_sprite.png" style="padding: 8px; width: 95%; background:#333; color:white; border:1px solid #555; border-radius:4px; margin-bottom:15px;">
             <button id="downloadBtn" class="download-btn">⬇️ Download Shiny Sprite</button>
@@ -139,11 +166,14 @@
         const paletteContainer = document.getElementById('paletteContainer');
         const downloadBtn = document.getElementById('downloadBtn');
         const outNameInput = document.getElementById('outName');
+        const hexStringDisplay = document.getElementById('hexStringDisplay');
+        const copyPaletteBtn = document.getElementById('copyPaletteBtn');
 
         let ctx = outputCanvas.getContext('2d');
         let originalImageData = null;
         let uniqueColors = []; // Array of RGB strings "r,g,b"
         let colorMap = {}; // Maps "r,g,b" string to [r, g, b] array
+        let hexListGlobal = []; // Stores hex codes for easy copying
 
         // Helper: Convert RGB components to Hex string
         function rgbToHex(r, g, b) {
@@ -168,11 +198,9 @@
                 originalImg.src = event.target.result;
                 
                 originalImg.onload = function() {
-                    // Set canvas boundaries matching image size
                     outputCanvas.width = originalImg.naturalWidth;
                     outputCanvas.height = originalImg.naturalHeight;
                     
-                    // Draw to canvas to extract pixel arrays
                     ctx.drawImage(originalImg, 0, 0);
                     originalImageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
                     
@@ -191,26 +219,24 @@
                 let b = pixels[i+2];
                 let a = pixels[i+3];
                 
-                if (a > 0) { // Ignore fully transparent pixels
+                if (a > 0) { 
                     colorSet.add(`${r},${g},${b}`);
                 }
             }
             
-            // Sort colors to keep order consistent
             uniqueColors = Array.from(colorSet).sort();
             
-            // Build the UI for mapping colors
             paletteContainer.innerHTML = '';
             colorMap = {};
+            hexListGlobal = [];
             
             uniqueColors.forEach((rgbStr) => {
                 let [r, g, b] = rgbStr.split(',').map(Number);
                 let hex = rgbToHex(r, g, b);
+                hexListGlobal.push(hex);
                 
-                // Default maps to itself
                 colorMap[rgbStr] = [r, g, b];
                 
-                // Create HTML Elements
                 let row = document.createElement('div');
                 row.className = 'color-row';
                 
@@ -238,13 +264,16 @@
                 paletteContainer.appendChild(row);
             });
             
+            // Display the plain-text hex list
+            hexStringDisplay.textContent = hexListGlobal.join(', ');
+            copyPaletteBtn.textContent = "📋 Copy Palette to Clipboard";
+            
             applyPaletteSwap();
         }
 
         function applyPaletteSwap() {
             if (!originalImageData) return;
             
-            // Clone the original data
             let newImgData = ctx.createImageData(outputCanvas.width, outputCanvas.height);
             let origPixels = originalImageData.data;
             let newPixels = newImgData.data;
@@ -256,7 +285,7 @@
                 let a = origPixels[i+3];
                 
                 if (a === 0) {
-                    newPixels[i+3] = 0; // Maintain transparency
+                    newPixels[i+3] = 0; 
                     continue;
                 }
                 
@@ -276,6 +305,21 @@
             
             ctx.putImageData(newImgData, 0, 0);
         }
+
+        // Copy palette functionality
+        copyPaletteBtn.addEventListener('click', function() {
+            if (hexListGlobal.length === 0) return;
+            const textToCopy = hexListGlobal.join(', ');
+            
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                copyPaletteBtn.textContent = "✅ Copied!";
+                setTimeout(() => {
+                    copyPaletteBtn.textContent = "📋 Copy Palette to Clipboard";
+                }, 2000);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+            });
+        });
 
         downloadBtn.addEventListener('click', function() {
             let link = document.createElement('a');
